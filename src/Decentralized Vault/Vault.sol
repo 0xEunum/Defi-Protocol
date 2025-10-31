@@ -6,14 +6,14 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract Vault is Ownable, ReentrancyGuard {
-    IERC20 public immutable asset;
+    IERC20 public immutable ASSET;
 
     // shares accounting
     uint256 public totalShares;
     mapping(address => uint256) public sharesOf;
 
-    // exchangeRate: asset amount per 1 share, fixed point with 1e18 precision
-    uint256 public exchangeRate; // starts at 1e18 = 1 asset per share
+    // exchangeRate: ASSET amount per 1 share, fixed point with 1e18 precision
+    uint256 public exchangeRate; // starts at 1e18 = 1 ASSET per share
     uint256 public constant SCALE = 1e18;
 
     // interest rate as per-second multiplier increment in fixed-point
@@ -31,8 +31,8 @@ contract Vault is Ownable, ReentrancyGuard {
 
     constructor(address _asset, uint256 _initialRatePerSecond) Ownable(msg.sender) {
         require(_asset != address(0), "ZERO_ASSET");
-        asset = IERC20(_asset);
-        exchangeRate = SCALE; // 1 asset per share initially
+        ASSET = IERC20(_asset);
+        exchangeRate = SCALE; // 1 ASSET per share initially
         ratePerSecond = _initialRatePerSecond;
         lastAccrualTimestamp = block.timestamp;
     }
@@ -64,7 +64,7 @@ contract Vault is Ownable, ReentrancyGuard {
         require(sharesMinted > 0, "MINT_ZERO");
         totalShares += sharesMinted;
         sharesOf[msg.sender] += sharesMinted;
-        require(asset.transferFrom(msg.sender, address(this), amount), "TRANSFER_FAIL");
+        require(ASSET.transferFrom(msg.sender, address(this), amount), "TRANSFER_FAIL");
         emit Deposit(msg.sender, amount, sharesMinted);
     }
 
@@ -77,7 +77,7 @@ contract Vault is Ownable, ReentrancyGuard {
         // update accounting
         sharesOf[msg.sender] -= shareAmount;
         totalShares -= shareAmount;
-        require(asset.transfer(msg.sender, assetsReturned), "TRANSFER_FAIL");
+        require(ASSET.transfer(msg.sender, assetsReturned), "TRANSFER_FAIL");
         emit Withdraw(msg.sender, assetsReturned, shareAmount);
     }
 
@@ -111,15 +111,15 @@ contract Vault is Ownable, ReentrancyGuard {
         emit Paused(isPaused);
     }
 
-    /// @notice rescue stuck ERC20s EXCEPT the asset token
+    /// @notice rescue stuck ERC20s EXCEPT the ASSET token
     function rescueERC20(address token, address to, uint256 amount) external onlyOwner {
-        require(token != address(asset), "NO_RESERVE_ASSET");
+        require(token != address(ASSET), "NO_RESERVE_ASSET");
         IERC20(token).transfer(to, amount);
     }
 
     /// @notice Return assets balance of vault
     function totalAssets() external view returns (uint256) {
-        return asset.balanceOf(address(this));
+        return ASSET.balanceOf(address(this));
     }
 
     /// @notice Exchange rate getter (updates not allowed in view)
