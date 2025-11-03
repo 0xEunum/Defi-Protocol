@@ -114,7 +114,8 @@ contract Vault is Ownable, ReentrancyGuard {
     /// @notice rescue stuck ERC20s EXCEPT the ASSET token
     function rescueERC20(address token, address to, uint256 amount) external onlyOwner {
         require(token != address(ASSET), "NO_RESERVE_ASSET");
-        IERC20(token).transfer(to, amount);
+        bool transferSuccess = IERC20(token).transfer(to, amount);
+        require(transferSuccess, "Transfer Failed!");
     }
 
     /// @notice Return assets balance of vault
