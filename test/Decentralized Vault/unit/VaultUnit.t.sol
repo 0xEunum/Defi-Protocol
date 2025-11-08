@@ -11,7 +11,9 @@ contract VaultUnit is Test {
     VaultERC20 token;
     DeployVault deployer;
 
-    address owner = address(deployer);
+    uint256 constant DEPOSIT_AMOUNT = 1000e18;
+
+    address owner = address(1);
     address user = address(2);
     address user2 = address(3);
 
@@ -26,9 +28,13 @@ contract VaultUnit is Test {
         (vault, token) = deployer.run();
         vm.stopPrank();
 
+        // Transfer the ownership to the owner!
+        vm.prank(address(deployer));
+        vault.transferOwnership(owner);
+
         // Give test users some tokens
-        token.mint(user, 1_000 ether);
-        token.mint(user2, 1_000 ether);
+        token.mint(user, DEPOSIT_AMOUNT);
+        token.mint(user2, DEPOSIT_AMOUNT);
 
         // Users approve vault
         vm.startPrank(user);
@@ -88,9 +94,15 @@ contract VaultUnit is Test {
     // }
 
     // function testWithdrawAllWorks() public {
+    //     console.log("User address", address(user));
+    //     console.log(token.balanceOf(user));
+    //     console.log("Deployer address", address(deployer));
+    //     console.log("Vault address", address(vault));
+    //     console.log("Token address", address(token));
     //     vm.startPrank(user);
-    //     vault.deposit(50 ether);
+    //     vault.deposit(5 ether);
     //     vm.warp(block.timestamp + 100 days);
+    //     vm.roll(100);
     //     vault.accrue();
     //     vault.withdrawAll();
     //     vm.stopPrank();
@@ -132,16 +144,16 @@ contract VaultUnit is Test {
                                 PAUSE / ADMIN
     //////////////////////////////////////////////////////////////*/
 
-    // function testPauseBlocksDeposit() public {
-    //     vm.startPrank(owner);
-    //     vault.setPaused(true);
-    //     vm.stopPrank();
+    function testPauseBlocksDeposit() public {
+        vm.startPrank(owner);
+        vault.setPaused(true);
+        vm.stopPrank();
 
-    //     vm.startPrank(user);
-    //     vm.expectRevert("PAUSED");
-    //     vault.deposit(10 ether);
-    //     vm.stopPrank();
-    // }
+        vm.startPrank(user);
+        vm.expectRevert("PAUSED");
+        vault.deposit(10 ether);
+        vm.stopPrank();
+    }
 
     function testOnlyOwnerCanPause() public {
         vm.startPrank(user);
@@ -150,14 +162,14 @@ contract VaultUnit is Test {
         vm.stopPrank();
     }
 
-    // function testOwnerCanChangeRate() public {
-    //     vm.startPrank(owner);
-    //     uint256 newRate = 2e12;
-    //     vault.setRatePerSecond(newRate);
-    //     vm.stopPrank();
+    function testOwnerCanChangeRate() public {
+        vm.startPrank(owner);
+        uint256 newRate = 2e12;
+        vault.setRatePerSecond(newRate);
+        vm.stopPrank();
 
-    //     assertEq(vault.ratePerSecond(), newRate);
-    // }
+        assertEq(vault.ratePerSecond(), newRate);
+    }
 
     /*//////////////////////////////////////////////////////////////
                             MULTI USER BEHAVIOR
