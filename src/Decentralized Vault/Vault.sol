@@ -69,7 +69,7 @@ contract Vault is Ownable, ReentrancyGuard {
     }
 
     /// @notice Withdraw `shareAmount` shares and receive underlying
-    function withdrawAssest(uint256 shareAmount) public notPaused nonReentrant returns (uint256 assetsReturned) {
+    function withdrawAssest(uint256 shareAmount) public notPaused returns (uint256 assetsReturned) {
         require(shareAmount > 0, "ZERO_SHARES");
         require(sharesOf[msg.sender] >= shareAmount, "INSUFFICIENT_SHARES");
         accrue();
