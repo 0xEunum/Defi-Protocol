@@ -74,41 +74,38 @@ contract VaultUnit is Test {
                                 WITHDRAW
     //////////////////////////////////////////////////////////////*/
 
-    // function testWithdrawReturnsAssets() public {
-    //     vm.startPrank(user);
-    //     vault.deposit(100 ether);
-    //     uint256 shares = vault.sharesOf(user);
+    function testWithdrawReturnsAssets() public {
+        vm.startPrank(user);
+        token.transfer(address(vault), 5e18);
+        vault.deposit(5 ether);
+        uint256 shares = vault.sharesOf(user);
 
-    //     // simulate some time passing to accrue interest
-    //     vm.warp(block.timestamp + 365 days);
-    //     vault.accrue();
+        // simulate some time passing to accrue interest
+        vm.warp(block.timestamp + 365 days);
+        vault.accrue();
 
-    //     uint256 expectedAssets = vault.previewWithdraw(shares);
-    //     uint256 userBalanceBefore = token.balanceOf(user);
-    //     vault.withdrawAssest(shares);
-    //     uint256 userBalanceAfter = token.balanceOf(user);
-    //     vm.stopPrank();
+        uint256 expectedAssets = vault.previewWithdraw(shares);
+        uint256 userBalanceBefore = token.balanceOf(user);
+        vault.withdrawAssest(shares);
+        uint256 userBalanceAfter = token.balanceOf(user);
+        vm.stopPrank();
 
-    //     assertApproxEqAbs(userBalanceAfter - userBalanceBefore, expectedAssets, 1e9);
-    //     assertEq(vault.sharesOf(user), 0);
-    // }
+        assertApproxEqAbs(userBalanceAfter - userBalanceBefore, expectedAssets, 1e9);
+        assertEq(vault.sharesOf(user), 0);
+    }
 
-    // function testWithdrawAllWorks() public {
-    //     console.log("User address", address(user));
-    //     console.log(token.balanceOf(user));
-    //     console.log("Deployer address", address(deployer));
-    //     console.log("Vault address", address(vault));
-    //     console.log("Token address", address(token));
-    //     vm.startPrank(user);
-    //     vault.deposit(5 ether);
-    //     vm.warp(block.timestamp + 100 days);
-    //     vm.roll(100);
-    //     vault.accrue();
-    //     vault.withdrawAll();
-    //     vm.stopPrank();
+    function testWithdrawAllWorks() public {
+        vm.startPrank(user);
+        token.transfer(address(vault), 5e18);
+        vault.deposit(5 ether);
+        vm.warp(block.timestamp + 100 days);
+        vm.roll(100);
+        vault.accrue();
+        vault.withdrawAll();
+        vm.stopPrank();
 
-    //     assertEq(vault.sharesOf(user), 0);
-    // }
+        assertEq(vault.sharesOf(user), 0);
+    }
 
     function testWithdrawMoreThanSharesReverts() public {
         vm.startPrank(user);
