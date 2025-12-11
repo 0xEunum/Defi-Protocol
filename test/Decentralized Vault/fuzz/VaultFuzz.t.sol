@@ -28,7 +28,7 @@ contract VaultFuzz is Test {
         (vault, token) = deployer.run();
         vm.stopPrank();
 
-        // Transfer the ownership to the owner!
+        // Transfer the ownership to the owner
         vm.prank(address(deployer));
         vault.transferOwnership(owner);
 
@@ -69,10 +69,11 @@ contract VaultFuzz is Test {
         assertEq(vaultBalanceAfter, vaultBalanceBefore + amount);
         assertEq(userBalanceAfter, userBalanceBefore - amount);
 
-        // Verify shares minted correctly
+        // Verify shares minted correctly (using current exchangeRate)
         uint256 expectedShares = vault.previewDeposit(amount);
         assertEq(sharesMinted, expectedShares);
         assertEq(sharesAfter, sharesBefore + sharesMinted);
+
         vm.stopPrank();
     }
 
@@ -83,16 +84,16 @@ contract VaultFuzz is Test {
 
         // User1 deposits
         vm.startPrank(user);
-        vault.deposit(amount1);
+        uint256 shares1 = vault.deposit(amount1);
         vm.stopPrank();
 
         // User2 deposits
         vm.startPrank(user2);
-        vault.deposit(amount2);
+        uint256 shares2 = vault.deposit(amount2);
         vm.stopPrank();
 
         // Verify total shares and vault balance
-        assertEq(vault.totalShares(), vault.previewDeposit(amount1) + vault.previewDeposit(amount2));
+        assertEq(vault.totalShares(), shares1 + shares2);
         assertEq(token.balanceOf(address(vault)), amount1 + amount2);
     }
 
@@ -103,14 +104,14 @@ contract VaultFuzz is Test {
     /// @notice Fuzz test withdraw with random share amounts
     function testFuzz_Withdraw(uint256 depositAmount, uint256 withdrawShares) public {
         vm.assume(depositAmount > 0 && depositAmount <= DEPOSIT_AMOUNT);
-        vm.assume(withdrawShares > 0 && withdrawShares <= vault.previewDeposit(depositAmount));
 
         vm.startPrank(user);
         // Deposit first
-        vault.deposit(depositAmount);
+        uint256 mintedShares = vault.deposit(depositAmount);
         uint256 sharesDeposited = vault.sharesOf(user);
+        assertEq(sharesDeposited, mintedShares);
 
-        // Ensure withdraw amount doesn't exceed shares
+        // Constrain withdrawShares to valid range based on actual minted shares
         uint256 sharesToWithdraw = bound(withdrawShares, 1, sharesDeposited);
 
         uint256 vaultBalanceBefore = token.balanceOf(address(vault));
@@ -136,19 +137,23 @@ contract VaultFuzz is Test {
         vm.stopPrank();
     }
 
-    /// @notice Fuzz test deposit then withdraw same amount (round trip)
-    // function testFuzz_DepositWithdrawRoundtrip(uint256 amount) public {
+    /// @notice Fuzz test deposit then withdraw all (round trip)
+    /// Principal safety: never loses principal; interest may be zero for small dt due to truncation.
+    // function testFuzz_DepositWithdrawRoundtrip(uint256 amount, uint256 timeDelta) public {
     //     vm.assume(amount > 0 && amount <= DEPOSIT_AMOUNT);
+    //     // Restrict timeDelta to realistic range and avoid 0
+    //     timeDelta = bound(timeDelta, 1 hours, 365 days);
 
     //     vm.startPrank(user);
     //     uint256 userBalanceBefore = token.balanceOf(user);
 
     //     // Deposit
     //     uint256 sharesMinted = vault.deposit(amount);
+    //     assertGt(sharesMinted, 0);
     //     assertEq(token.balanceOf(user), userBalanceBefore - amount);
 
     //     // Accrue some interest (warp time)
-    //     skip(1 days);
+    //     vm.warp(block.timestamp + timeDelta);
     //     vault.accrue();
 
     //     // Withdraw all
@@ -157,9 +162,12 @@ contract VaultFuzz is Test {
     //     uint256 userBalanceAfter = token.balanceOf(user);
     //     assertEq(vault.sharesOf(user), 0);
 
-    //     // Should get back >= deposited amount due to interest
+    //     // Principal safety: never lose initial deposit
     //     assertGe(assetsWithdrawn, amount);
+
+    //     // User balance increased by assetsWithdrawn relative to post-deposit state
     //     assertEq(userBalanceAfter, userBalanceBefore - amount + assetsWithdrawn);
+
     //     vm.stopPrank();
     // }
 
@@ -168,37 +176,40 @@ contract VaultFuzz is Test {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Fuzz test interest accrual over random time periods
-    // function testFuzz_InterestAccrual(uint256 depositAmount, uint256 timeDelta) public {
-    //     vm.assume(depositAmount > 0 && depositAmount <= DEPOSIT_AMOUNT);
-    //     vm.assume(timeDelta >= 1 hours && timeDelta <= 365 days);
+    /// Ensures exchangeRate is non-decreasing and principal is safe.
+    function testFuzz_InterestAccrual(uint256 depositAmount, uint256 timeDelta) public {
+        vm.assume(depositAmount > 0 && depositAmount <= DEPOSIT_AMOUNT);
+        timeDelta = bound(timeDelta, 1 hours, 365 days);
 
-    //     vm.startPrank(user);
-    //     vault.deposit(depositAmount);
-    //     uint256 initialShares = vault.sharesOf(user);
-    //     uint256 initialExchangeRate = vault.getExchangeRate();
+        vm.startPrank(user);
+        vault.deposit(depositAmount);
+        uint256 initialShares = vault.sharesOf(user);
+        uint256 initialExchangeRate = vault.getExchangeRate();
 
-    //     // Warp time and accrue
-    //     vm.warp(block.timestamp + timeDelta);
-    //     vault.accrue();
-    //     uint256 newExchangeRate = vault.getExchangeRate();
+        // Warp time and accrue
+        vm.warp(block.timestamp + timeDelta);
+        vault.accrue();
+        uint256 newExchangeRate = vault.getExchangeRate();
 
-    //     // Exchange rate should increase with time
-    //     assertGt(newExchangeRate, initialExchangeRate);
+        // Exchange rate should be non-decreasing (truncation may keep it flat for small dt)
+        assertGe(newExchangeRate, initialExchangeRate);
 
-    //     // Preview withdraw should show profit
-    //     uint256 assetsWithInterest = vault.previewWithdraw(initialShares);
-    //     assertGt(assetsWithInterest, depositAmount);
-    //     vm.stopPrank();
-    // }
+        // Preview withdraw should never give less than principal
+        uint256 assetsWithInterest = vault.previewWithdraw(initialShares);
+        assertGe(assetsWithInterest, depositAmount);
+
+        vm.stopPrank();
+    }
 
     /*//////////////////////////////////////////////////////////////
                             EDGE CASE FUZZ TESTS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Fuzz test maximum deposit amounts
+    /// @notice Fuzz test maximum deposit amounts (within a practical bound)
     function testFuzz_MaxDeposit(uint256 amount) public {
         vm.assume(amount > 0);
-        amount = bound(amount, 0, type(uint256).max / 1e18);
+        // Bound to a large but sane range so math doesn't overflow
+        amount = bound(amount, 1, DEPOSIT_AMOUNT * 1000);
 
         // Mint enough tokens for large deposit
         vm.prank(owner);
@@ -207,24 +218,30 @@ contract VaultFuzz is Test {
         vm.startPrank(user);
         token.approve(address(vault), amount);
 
-        if (amount <= DEPOSIT_AMOUNT * 1000) {
-            uint256 shares = vault.deposit(amount);
-            assertGt(shares, 0);
-            assertEq(token.balanceOf(address(vault)), amount);
-        }
+        uint256 shares = vault.deposit(amount);
+        assertGt(shares, 0);
+        assertEq(token.balanceOf(address(vault)), amount);
+
         vm.stopPrank();
     }
 
-    /// @notice Test deposit/withdraw with dust amounts (handles precision loss)
-    // function testFuzz_DustAmounts() public {
-    //     uint256 dust = 1; // 1 wei
+    /// @notice Deterministic dust test: configure high exchangeRate so tiny deposits revert with MINT_ZERO
+    function test_DustDepositReverts() public {
+        // Bump rate per second to push exchangeRate up fast
+        vm.startPrank(owner);
+        vault.setRatePerSecond(ratePerSecond * 1e9);
+        vm.stopPrank();
 
-    //     vm.startPrank(user);
-    //     token.transfer(address(vault), dust); // Direct transfer for dust test
+        // Warp enough time so exchangeRate becomes huge, making 1 wei -> 0 shares
+        vm.warp(block.timestamp + 365 days);
+        vault.accrue();
 
-    //     // Should revert on tiny deposit due to shares == 0 check
-    //     vm.expectRevert("MINT_ZERO");
-    //     vault.deposit(dust);
-    //     vm.stopPrank();
-    // }
+        uint256 dust = 1; // 1 wei
+
+        vm.startPrank(user);
+        // Ensure user has at least dust and approval already set in setUp()
+        vm.expectRevert("MINT_ZERO");
+        vault.deposit(dust);
+        vm.stopPrank();
+    }
 }
